@@ -1,0 +1,27 @@
+{
+  "Sidebar": {
+    "dashboard": "Tablero",
+    "parties": "Clientes",
+    "items": "Productos",
+    "invoices": "Facturas Fiscales",
+    "expenses": "Gastos",
+    "accounting": "Contabilidad",
+    "settings": "Ajustes",
+    "version": "v1.0 (2026 Ready)"
+  },
+  "Dashboard": {
+    "greeting": "Bienvenido de nuevo",
+    "totalRevenue": "Ingresos Totales",
+    "outstanding": "Pendiente",
+    "recentActivity": "Actividad reciente",
+    "viewAll": "Ver Todo"
+  },
+  "Common": {
+    "search": "Buscar...",
+    "save": "Guardar cambios",
+    "cancel": "Cancelar",
+    "addNew": "Añadir nuevo",
+    "delete": "Borrar",
+    "status": "Estado"
+  }
+}

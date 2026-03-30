@@ -1,0 +1,27 @@
+{
+  "Sidebar": {
+    "dashboard": "डैशबोर्ड",
+    "parties": "पार्टियां (ग्राहक)",
+    "items": "वस्तुओं (उत्पाद)",
+    "invoices": "टैक्स चालान",
+    "expenses": "खर्च",
+    "accounting": "खाताबही",
+    "settings": "सेटिंग्स",
+    "version": "v1.0 (2026 Ready)"
+  },
+  "Dashboard": {
+    "greeting": "वापसी पर स्वागत है",
+    "totalRevenue": "कुल कमाई",
+    "outstanding": "बकाया राशि",
+    "recentActivity": "हाल की गतिविधि",
+    "viewAll": "सभी देखें"
+  },
+  "Common": {
+    "search": "खोजें...",
+    "save": "बदलें सेव करें",
+    "cancel": "रद्द करें",
+    "addNew": "नया जोड़ें",
+    "delete": "हटाएं",
+    "status": "स्थिति"
+  }
+}

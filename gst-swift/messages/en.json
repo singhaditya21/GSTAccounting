@@ -1,0 +1,28 @@
+{
+  "Sidebar": {
+    "dashboard": "Dashboard",
+    "parties": "Parties (Customers)",
+    "items": "Items (Products)",
+    "invoices": "Tax Invoices",
+    "expenses": "Expenses",
+    "accounting": "Accounting",
+    "compliance": "Tax Compliance",
+    "settings": "Settings",
+    "version": "v1.0 (2026 Ready)"
+  },
+  "Dashboard": {
+    "greeting": "Welcome back",
+    "totalRevenue": "Total Revenue",
+    "outstanding": "Outstanding",
+    "recentActivity": "Recent Activity",
+    "viewAll": "View All"
+  },
+  "Common": {
+    "search": "Search...",
+    "save": "Save changes",
+    "cancel": "Cancel",
+    "addNew": "Add New",
+    "delete": "Delete",
+    "status": "Status"
+  }
+}

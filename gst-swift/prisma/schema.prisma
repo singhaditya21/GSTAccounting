@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id                String               @id @default(uuid())
+  name              String
+  tradeName         String?
+  pan               String?
+  gstin             String?              // Single primary GSTIN
+  baseCurrency      String               @default("INR") // Base ledger currency for IRS/GST
+  turnoverThreshold Float                @default(5000000) // Default 50L for composition, etc.
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  branches          Branch[]
+  members           OrganizationMember[]
+  pendingInvites    PendingInvite[]
+  customers         Customer[]
+  products          Product[]
+  invoices          Invoice[]
+  expenses          Expense[]
+  ledgers           LedgerEntry[]
+  payments          Payment[]
+  subscriptions     Subscription[]
+  tenantSettings    TenantSettings?
+  rolePolicies      RolePolicy[]
+}
+
+model PlatformSettings {
+  id                    String   @id @default("GLOBAL")
+  maxIdleTimeoutMinutes Int      @default(60) // Absolute maximum SaaS users can be idle before strict logouts
+  updatedAt             DateTime @updatedAt
+}
+
+model TenantSettings {
+  id                        String       @id @default(uuid())
+  orgId                     String       @unique
+  organization              Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  // SaaS Freemium Gating
+  subscriptionTier          String       @default("FREE") // FREE, PRO, ENTERPRISE
+  aiOcrTokensRemaining      Int          @default(10)     // Deducted upon Llama calls
+  
+  // Automation Procurement Logic
+  inventoryReorderThreshold Float        @default(5.0)    
+  enableAutomatedPOEmails   Boolean      @default(false)
+  procurementEmail          String?                       
+  
+  // Security & Identity
+  idleTimeoutMinutes        Int          @default(30)     // Tenant-specific auto-logout parameters
+
+  updatedAt                 DateTime     @updatedAt
+}
+
+model RolePolicy {
+  id          String       @id @default(uuid())
+  orgId       String
+  roleName    String       // e.g. "SENIOR_ACCOUNTANT"
+  permissions String       // JSON Array: ["INVOICE_READ", "INVOICE_DELETE"]
+  createdAt   DateTime     @default(now())
+  
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  
+  @@unique([orgId, roleName])
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  orgId     String
+  name      String   // e.g., "Mum HQ", "BLR Warehouse"
+  gstin     String?  // Specific GSTIN for this branch if different
+  address   String
+  state     String   // e.g., "MH", "KA" - essential for PoS calculations
+  pincode   String
+  isHead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+  expenses     Expense[]
+  // Inventory tracked per branch
+  inventory    BranchInventory[]
+  transactions WarehouseTransaction[]
+  subscriptions Subscription[]
+  members      OrganizationMember[]
+}
+
+model OrganizationMember {
+  id        String   @id @default(uuid())
+  orgId     String
+  userId    String   // Clerk User ID
+  role      String   @default("VIEWER") // OWNER, ACCOUNTANT, BRANCH_MANAGER, VIEWER
+  branchId  String?  // Strict RBAC scope (optional for global roles like OWNER/ACCOUNTANT)
+  permissions String? // JSON encoded fine-grained permissions if needed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id])
+
+  @@unique([orgId, userId])
+}
+
+model PendingInvite {
+  id        String   @id @default(uuid())
+  orgId     String
+  email     String
+  roleName  String
+  token     String   @unique // Cryptographic UUID explicitly linking generic users to Organizations
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model Customer {
+  id              String   @id @default(uuid())
+  orgId           String
+  legalName       String
+  tradeName       String?
+  gstin           String?
+  pan             String?
+  billingAddress  String
+  billingState    String
+  billingPincode  String
+  shippingAddress String?
+  shippingState   String?
+  shippingPincode String?
+  isSupplier      Boolean  @default(false)
+  
+  // Party-Level Customization
+  defaultCurrency String   @default("INR") // e.g. USD, EUR, INR
+  preferredLanguage String @default("en")  // e.g. en, es, hi
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+  subscriptions Subscription[]
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  orgId       String
+  name        String
+  description String?
+  hsnSac      String
+  unit        String   // e.g., "NOS", "KGS"
+  gstRate     Float    @default(18.0) // Percentage
+  defaultPrice Float
+  isService   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoiceItems InvoiceItem[]
+  inventory    BranchInventory[]
+  transactions WarehouseTransaction[]
+}
+
+model BranchInventory {
+  id        String   @id @default(uuid())
+  branchId  String
+  productId String
+  quantity  Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, productId])
+}
+
+model WarehouseTransaction {
+  id        String   @id @default(uuid())
+  branchId  String
+  productId String
+  invoiceId String?  // If deduction was via Sales
+  expenseId String?  // If addition was via Purchase
+  quantity  Float    // Signed: Positive for inward, Negative for outward
+  costBasis Float    // For strict FIFO/LIFO tracking
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id              String   @id @default(uuid())
+  orgId           String
+  branchId        String
+  customerId      String
+  number          String   // Sequential ORG-BRANCH-YYYY-XXXX
+  currency        String   @default("INR")
+  exchangeRate    Float    @default(1.0)
+  date            DateTime @default(now())
+  dueDate         DateTime?
+  status          String   @default("DRAFT") // DRAFT, ISSUED, PAID, PARTIAL, CANCELLED
+  
+  // Tax & Totals
+  taxableValue    Float
+  igstAmount      Float    @default(0)
+  cgstAmount      Float    @default(0)
+  sgstAmount      Float    @default(0)
+  discountTotal   Float    @default(0)
+  grandTotal      Float
+
+  // E-Invoicing (IRN)
+  irn             String?  @unique
+  qrData          String?
+  ackNo           String?
+  ackDate         DateTime?
+
+  // Online Payment Link Hooks
+  razorpayOrderId   String?
+  razorpayPaymentLinkId String?
+  razorpayStatus    String? // CREATED, PARTIALLY_PAID, PAID, CANCELLED
+
+  // Additional 2026 rules
+  placeOfSupply   String   // State code
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items        InvoiceItem[]
+  payments     Payment[]
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  productId   String
+  description String?
+  quantity    Float
+  unitPrice   Float
+  discount    Float    @default(0) // Amount or percentage based on app logic
+  
+  // Computed values per item
+  taxableValue Float
+  igstAmount   Float   @default(0)
+  cgstAmount   Float   @default(0)
+  sgstAmount   Float   @default(0)
+  totalAmount  Float
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model Expense {
+  id            String   @id @default(uuid())
+  orgId         String
+  branchId      String
+  date          DateTime
+  description   String
+  currency      String   @default("INR")
+  exchangeRate  Float    @default(1.0)
+  amount        Float
+  taxAmount     Float    @default(0)
+  isReverseCharge Boolean @default(false)
+  isEligibleITC Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
+model LedgerEntry {
+  id          String   @id @default(uuid())
+  orgId       String
+  date        DateTime
+  account     String   // e.g., "SALES", "CASH", "INPUT_CGST"
+  type        String   // "DEBIT" or "CREDIT"
+  currency    String   @default("INR")
+  exchangeRate Float   @default(1.0)
+  amount      Float    // Native ledger valuation (Base Currency Equivalent)
+  description String?
+  referenceId String?  // ID of Invoice/Payment/Expense
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  orgId       String
+  invoiceId   String?
+  currency    String   @default("INR")
+  exchangeRate Float   @default(1.0)
+  amount      Float
+  paymentMode String   // UPI, BANK_TRANSFER, CASH, RAZORPAY
+  referenceNo String?
+  
+  // Webhook Integrations
+  razorpayPaymentId String? @unique
+  razorpaySignature String?
+
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id])
+}
+
+model BankReconciliation {
+  id          String   @id @default(uuid())
+  orgId       String
+  stmtDate    DateTime
+  stmtAmount  Float
+  paymentMode String
+  isMatched   Boolean  @default(false)
+  matchedToId String?  // Payment ID or Expense ID
+  createdAt   DateTime @default(now())
+}
+
+model AiLog {
+  id        String   @id @default(uuid())
+  userId    String
+  query     String
+  response  String
+  tokens    Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Subscription {
+  id              String   @id @default(uuid())
+  orgId           String
+  branchId        String
+  customerId      String
+  interval        String   @default("MONTHLY") // MONTHLY, QUARTERLY, ANNUALLY, WEEKLY
+  nextBillingDate DateTime
+  isActive        Boolean  @default(true)
+  baseAmount      Float
+  currency        String   @default("INR")
+  
+  // Stored JSON payload of all items required for recursive cloning
+  structuredItems String
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
